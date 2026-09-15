@@ -1,0 +1,61 @@
+{
+  "_doc": "session-guard config. Copy to session-guard.json (git-ignored) and adjust. `~` expands to the guarded user's home (notify.user, or SUDO_USER when run via sudo) — never to the daemon's own $HOME. Directory prefixes must end with '/'. An allow rule matches when ALL of its specified fields match; prefer team_id/signing_id over bare exe paths (a path can be impersonated, a Developer ID signature cannot). Run `./run.sh --learn 300` to see which processes touch these paths on your machine, then extend `allow`.",
+
+  "watch": [
+    "~/.claude/projects/",
+    "~/.claude/transcripts/",
+    "~/.claude/sessions/",
+    "~/.claude/history.jsonl",
+    "~/.claude/file-history/",
+    "~/.claude/paste-cache/",
+    "~/.claude/session-env/",
+    "~/.claude/debug/",
+    "~/.claude/plans/",
+    "~/.claude/daemon/",
+    "~/.claude/.credentials.json",
+    "~/.claude.json",
+
+    "~/.local/share/opencode/",
+
+    "~/.codex/"
+  ],
+
+  "exclude": [
+    "~/.local/share/opencode/bin/",
+    "~/.local/share/opencode/log/",
+    "~/.codex/cache/",
+    "~/.codex/log/",
+    "~/.codex/plugins/"
+  ],
+
+  "allow": [
+    {"name": "claude-code", "signing_id": "com.anthropic.claude-code", "team_id": "Q6L2SF6YDW"},
+    {"name": "codex",       "signing_id": "codex",                     "team_id": "2DC432GLL2"},
+    {"name": "opencode",    "exe_prefix": "~/.opencode/bin/opencode",
+     "_note": "opencode ships ad-hoc signed (Identifier=a.out, no team) so only its path can be pinned"},
+
+    {"name": "spotlight-mds",    "signing_id": "com.apple.mds",             "platform_binary": true},
+    {"name": "spotlight-stores", "signing_id": "com.apple.mds_stores",      "platform_binary": true},
+    {"name": "spotlight-worker", "signing_id": "com.apple.mdworker_shared", "platform_binary": true}
+  ],
+
+  "_allow_examples": [
+    "Your EDR / antivirus / backup agent will open these files constantly. Find its identity with",
+    "`codesign -dv /path/to/agent 2>&1 | grep -E '^(Identifier|TeamIdentifier)='` and add a team_id rule, e.g.",
+    {"name": "sentinelone", "team_id": "4AYE5J54KN"}
+  ],
+
+  "cooldown_seconds": 60,
+  "heartbeat_seconds": 300,
+  "log_dir": "/var/log/session-guard",
+
+  "notify": {
+    "user": null,
+    "uid": null,
+    "_user_doc": "null = SUDO_USER (run.sh) / baked in by install.sh (LaunchDaemon). Set explicitly if that guess is wrong.",
+    "macos_notification": true,
+    "on_start": true,
+    "command": null,
+    "_command_doc": "optional shell command; receives the alert JSON on stdin (webhook, chat bot, ...)"
+  }
+}

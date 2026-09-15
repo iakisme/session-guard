@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.github.iakisme.session-guard</string>
+
+  <!-- The launcher is the job root and therefore the process TCC evaluates for
+       Full Disk Access. eslogger's JSON Lines are piped into the Python guard. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/lib/session-guard/session-guard-launcher</string>
+    <string>/usr/bin/eslogger</string>
+    <string>open</string>
+    <string>clone</string>
+    <string>copyfile</string>
+    <string>rename</string>
+    <string>unlink</string>
+    <string>--</string>
+    <string>/usr/bin/python3</string>
+    <string>/usr/local/lib/session-guard/session_guard.py</string>
+    <string>--config</string>
+    <string>/usr/local/etc/session-guard.json</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>/var/log/session-guard/daemon.out</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/session-guard/daemon.err</string>
+</dict>
+</plist>

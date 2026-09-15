@@ -1,0 +1,11 @@
+# local, machine-specific config (paths, user, EDR allow rules) — never commit
+session-guard.json
+
+# build artifacts
+session-guard-launcher
+*.o
+*.dSYM/
+
+# runtime
+log/
+.DS_Store
