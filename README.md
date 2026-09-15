@@ -182,6 +182,31 @@ Notifications are rate-limited to one per (pid, executable) per
 `cooldown_seconds` (default 60); the next one carries the suppressed count.
 Every event is still logged.
 
+## Hardening: put the session files behind macOS TCC
+
+Detection is the default, but one class of reader *can* be blocked without
+root: GUI apps. macOS asks per app before it may read `~/Documents`,
+`~/Desktop` or `~/Downloads`, and a symlink does not bypass that check.
+Terminal apps with Full Disk Access are unaffected, so the CLIs keep working.
+
+Example: Cursor ships a component (`workbench.contrib.externalCliAnalytics`,
+gated by a server-side flag) that polls `~/.claude/history.jsonl` and
+`~/.codex/history.jsonl` every hour and reports per-prompt timestamps, session
+ids and prompt lengths to its analytics backend. To keep it out:
+
+```sh
+V=~/Documents/.ai-sessions; mkdir -p $V/claude $V/codex; chmod 700 $V $V/claude $V/codex
+mv ~/.claude/history.jsonl $V/claude/history.jsonl && ln -s $V/claude/history.jsonl ~/.claude/history.jsonl
+mv ~/.claude/projects      $V/claude/projects      && ln -s $V/claude/projects      ~/.claude/projects
+mv ~/.codex/history.jsonl  $V/codex/history.jsonl  && ln -s $V/codex/history.jsonl  ~/.codex/history.jsonl
+```
+
+Then in System Settings → Privacy & Security → Files and Folders switch the
+Documents folder **off** for every app that has no business there (Cursor,
+VS Code, …). Add the new real paths to `watch` (eslogger reports resolved
+paths), and make sure iCloud "Desktop & Documents" sync is off, or the
+transcripts would be uploaded.
+
 ## Limits
 
 * Same-UID processes can always *read* your files; this detects, it does not

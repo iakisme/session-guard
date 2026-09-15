@@ -34,7 +34,7 @@ FWRITE = 0x2
 
 # Path components too generic to serve as a cheap pre-filter substring.
 GENERIC_COMPONENTS = {"", "Users", "Library", "Application Support", ".local",
-                      "share", "private", "var", "tmp"}
+                      "share", "private", "var", "tmp", "Documents", "Desktop"}
 
 
 def now_iso():
@@ -265,11 +265,12 @@ class Guard:
 
     @staticmethod
     def tool_of(path):
-        if "/.claude" in path:
+        p = path.lower()
+        if "/.claude" in p or "/claude/" in p:
             return "Claude Code"
-        if "/opencode" in path:
+        if "opencode" in p:
             return "OpenCode"
-        if "/.codex" in path:
+        if "/.codex" in p or "/codex/" in p:
             return "Codex"
         return "session"
 

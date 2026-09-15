@@ -127,11 +127,12 @@ def bucket_of(path, home):
 
 
 def tool_of(path):
-    if "/.claude" in path:
+    p = path.lower()
+    if "/.claude" in p or "/claude/" in p:
         return "Claude Code"
-    if "/opencode" in path:
+    if "opencode" in p:
         return "OpenCode"
-    if "/.codex" in path:
+    if "/.codex" in p or "/codex/" in p:
         return "Codex"
     return "session"
 
