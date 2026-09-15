@@ -63,6 +63,8 @@
 
   "cooldown_seconds": 60,
   "heartbeat_seconds": 300,
+  "aggregate_flush_seconds": 600,
+  "_aggregate_doc": "every matched event (allowed or not) is also counted per hour x actor x location and appended to <log_dir>/access-YYYY-MM-DD.jsonl at this interval; skills/session-guard-report/report.py turns those files into an HTML report. Set notify.macos_notification=false for a quiet, report-only setup.",
   "log_dir": "/var/log/session-guard",
 
   "notify": {

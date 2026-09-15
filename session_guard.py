@@ -73,6 +73,7 @@ class Config:
             self.allow.append(r)
         self.cooldown = int(raw.get("cooldown_seconds", 60))
         self.heartbeat = int(raw.get("heartbeat_seconds", 300))
+        self.agg_flush = int(raw.get("aggregate_flush_seconds", 600))
         self.log_dir = raw.get("log_dir", "/var/log/session-guard")
         self.notify_macos = bool(n.get("macos_notification", True))
         self.notify_on_start = bool(n.get("on_start", True))
@@ -183,6 +184,10 @@ class Guard:
         self.threads = []
         self.stats = collections.Counter()
         self.last_heartbeat = time.time()
+        # Hourly access aggregates for EVERY matched event (allowed or not),
+        # flushed to access-YYYY-MM-DD.jsonl; the report tool reads those.
+        self.agg = {}
+        self.agg_last_flush = time.time()
         self.lock = threading.Lock()
         self._open_logs()
 
@@ -268,6 +273,61 @@ class Guard:
             return "Codex"
         return "session"
 
+    def tilde(self, p):
+        h = self.cfg.home
+        return "~" + p[len(h):] if p == h or p.startswith(h + "/") else p
+
+    def bucket_of(self, path):
+        """Coarse location for aggregation: the watch prefix plus one path
+        component (e.g. ~/.claude/projects/<project>, ~/.codex/sessions)."""
+        for w in self.cfg.watch:
+            if w.endswith("/") and (path.startswith(w) or path == w[:-1]):
+                first = path[len(w):].split("/", 1)[0]
+                return self.tilde(w + first if first else w[:-1])
+            if path == w:
+                return self.tilde(w)
+        return self.tilde(path)
+
+    # -- access aggregation --------------------------------------------------
+    def aggregate(self, hits, kind, mode, exe, sid, tid, verdict, pid, ppid):
+        now = time.time()
+        hour = time.strftime("%Y-%m-%dT%H", time.localtime(now))
+        key = (hour, exe, sid or "", tid or "", verdict, self.bucket_of(hits[0]), kind, mode or "")
+        a = self.agg.get(key)
+        if a is None:
+            a = self.agg[key] = {"n": 0, "pids": set(), "first": now, "last": now, "sample": hits[0],
+                                 "tool": self.tool_of(hits[0]),
+                                 "cmd": self.procs.command(pid), "parent": self.procs.command(ppid)}
+        a["n"] += 1
+        a["last"] = now
+        if len(a["pids"]) < 50:
+            a["pids"].add(pid)
+
+    def flush_agg(self):
+        self.agg_last_flush = time.time()
+        if not self.agg:
+            return
+        by_day = collections.defaultdict(list)
+        for (hour, exe, sid, tid, verdict, bucket, kind, mode), a in self.agg.items():
+            by_day[hour[:10]].append({
+                "hour": hour, "exe": exe, "sid": sid or None, "tid": tid or None, "verdict": verdict,
+                "tool": a["tool"], "bucket": bucket, "kind": kind, "mode": mode or None, "n": a["n"],
+                "pids": sorted(p for p in a["pids"] if p is not None), "first": round(a["first"], 3),
+                "last": round(a["last"], 3), "sample": self.tilde(a["sample"]), "cmd": a["cmd"], "parent": a["parent"]})
+        for day, rows in by_day.items():
+            p = os.path.join(self.log_dir, "access-%s.jsonl" % day)
+            new = not os.path.exists(p)
+            with open(p, "a") as fh:
+                for r in rows:
+                    fh.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
+            if new:
+                try:
+                    os.chmod(p, 0o644)
+                except Exception:
+                    pass
+            self.stats["agg_rows"] += len(rows)
+        self.agg.clear()
+
     # -- main loop ---------------------------------------------------------
     def run(self, stream):
         markers = self.cfg.markers
@@ -294,18 +354,25 @@ class Guard:
                 continue
             self.handle(ev, raw)
             self.heartbeat()
-        self.log("stdin closed (eslogger exited); lines=%d" % self.stats["lines"])
         if self.learn:
             self.finish_learn()
+        self.shutdown("stdin closed (eslogger exited)")
         for t in self.threads:  # let in-flight notifications finish before exit
             t.join(timeout=15)
 
     def heartbeat(self):
         t = time.time()
+        if self.agg and t - self.agg_last_flush >= self.cfg.agg_flush:
+            self.flush_agg()
         if t - self.last_heartbeat >= self.cfg.heartbeat:
             self.last_heartbeat = t
-            self.log("heartbeat lines=%d matched=%d allowed=%d alerts=%d notified=%d bad_json=%d"
-                     % tuple(self.stats[k] for k in ("lines", "matched", "allowed", "alerts", "notified", "bad_json")))
+            self.log("heartbeat lines=%d matched=%d allowed=%d alerts=%d notified=%d agg_rows=%d bad_json=%d"
+                     % tuple(self.stats[k] for k in ("lines", "matched", "allowed", "alerts", "notified", "agg_rows", "bad_json")))
+
+    def shutdown(self, reason):
+        self.flush_agg()
+        self.log("%s; lines=%d matched=%d alerts=%d agg_rows=%d"
+                 % (reason, self.stats["lines"], self.stats["matched"], self.stats["alerts"], self.stats["agg_rows"]))
 
     def handle(self, ev, raw):
         event = ev.get("event") or {}
@@ -335,6 +402,8 @@ class Guard:
             mode = "read+write" if (ff & FREAD and ff & FWRITE) else ("write" if ff & FWRITE else "read")
 
         rule = self.allowed(exe, sid, tid, platform, pid)
+        if self.learn is None:
+            self.aggregate(hits, kind, mode, exe, sid, tid, rule or "ALERT", pid, ppid)
         if self.learn is not None:
             key = (exe, sid or "-", tid or "-", rule or "ALERT")
             self.tally[key] += 1
@@ -464,11 +533,11 @@ def main():
                                      "command": cfg.notify_command}}, indent=2))
         return
     g = Guard(cfg, learn=args.learn, dump=args.dump)
-    signal.signal(signal.SIGTERM, lambda *_: (g.log("SIGTERM, exiting"), os._exit(0)))
+    signal.signal(signal.SIGTERM, lambda *_: (g.shutdown("SIGTERM, exiting"), os._exit(0)))
     try:
         g.run(sys.stdin)
     except KeyboardInterrupt:
-        g.log("interrupted")
+        g.shutdown("interrupted")
 
 
 if __name__ == "__main__":

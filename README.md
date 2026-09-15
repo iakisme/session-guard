@@ -138,6 +138,37 @@ sudo ./install.sh --replace-config   # also deploy the local session-guard.json 
 one has. The FDA grant survives updates as long as the launcher binary is
 unchanged; if it changed, the script says so and re-opens System Settings.
 
+## Daily report instead of (or as well as) alerts
+
+Every matched access, allow-listed or not, is also counted per hour × actor ×
+location and appended to `<log_dir>/access-YYYY-MM-DD.jsonl` (flushed every
+`aggregate_flush_seconds`, default 600). `skills/session-guard-report/report.py`
+turns those files into one self-contained HTML page: accesses per day, a
+day × hour heatmap, an actor table (executable + code-signing identity +
+verdict, expandable to command line, parent process and per-location counts)
+and a location table, with day / verdict / search filters. Nothing leaves the
+machine.
+
+```sh
+python3 skills/session-guard-report/report.py --days 7 --open     # last week
+python3 skills/session-guard-report/report.py --day 2026-09-15     # one day
+python3 skills/session-guard-report/report.py --json               # summary for scripts
+```
+
+Reports land in `~/Library/Logs/session-guard/reports/`. Days before
+aggregation existed are backfilled with the unlisted accesses from
+`events.jsonl` (allow-listed actors were not logged then).
+
+For a quiet, report-only setup set `notify.macos_notification` and
+`notify.on_start` to `false` in your config; everything is still recorded.
+
+The same directory is a **Claude Code skill**: link it and ask "who accessed
+my sessions this week?":
+
+```sh
+ln -s "$PWD/skills/session-guard-report" ~/.claude/skills/session-guard-report
+```
+
 ## Alert channels
 
 1. macOS notification (from the daemon via `launchctl asuser <uid> sudo -u <user> osascript`).
