@@ -40,11 +40,14 @@ uses `clonefile(2)` and never `open`s the source), `rename` (moving data out),
 | Tool | Paths |
 |------|-------|
 | Claude Code | `~/.claude/projects/` (transcripts), `transcripts/`, `sessions/`, `history.jsonl`, `file-history/`, `paste-cache/`, `session-env/`, `debug/`, `plans/`, `daemon/`, `~/.claude.json` |
-| OpenCode | `~/.local/share/opencode/` (SQLite db, `storage/`, `snapshot/`, `tool-output/`) minus `bin/`, `log/` |
-| Codex | `~/.codex/` (`sessions/`, `history.jsonl`, `auth.json`, sqlite stores) minus `cache/`, `log/`, `plugins/` |
+| OpenCode | `~/.local/share/opencode/` (SQLite db, `storage/`, `tool-output/`) minus `bin/`, `log/`, `snapshot/` |
+| Codex | `~/.codex/` (`sessions/`, `history.jsonl`, `auth.json`, sqlite stores) minus `cache/`, `log/`, `plugins/`, `skills/` |
 
-`~/.claude/shell-snapshots/` is deliberately **not** watched: Claude Code's Bash
-tool sources it through `/bin/zsh` on every command, which would alert constantly.
+Deliberately **not** watched: `~/.claude/shell-snapshots/` (Claude Code's Bash
+tool sources it through `/bin/zsh` on every command), OpenCode's `snapshot/`
+(git snapshots of your working trees, read by short-lived `git` children of
+opencode that exit before they can be identified) and Codex's `skills/`
+(installed skill content, not session data).
 
 ## Allow list
 

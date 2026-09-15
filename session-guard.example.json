@@ -33,10 +33,13 @@
   "exclude": [
     "~/.local/share/opencode/bin/",
     "~/.local/share/opencode/log/",
+    "~/.local/share/opencode/snapshot/",
     "~/.codex/cache/",
     "~/.codex/log/",
-    "~/.codex/plugins/"
+    "~/.codex/plugins/",
+    "~/.codex/skills/"
   ],
+  "_exclude_doc": "opencode/snapshot/ holds git snapshots of your working trees, read by short-lived `git` children of opencode that exit before a cmd_regex lookup can identify them; codex/skills/ is installed skill content, not session data.",
 
   "allow": [
     {"name": "claude-code", "signing_id": "com.anthropic.claude-code", "team_id": "Q6L2SF6YDW"},
