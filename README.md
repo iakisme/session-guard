@@ -64,6 +64,23 @@ explicitly if you want.
 Your EDR / antivirus / backup agent will show up in the learn run. Add it by
 `team_id`, found with `codesign -dv /path/to/agent 2>&1 | grep TeamIdentifier`.
 
+Rule fields (all specified fields must match; first matching rule wins):
+
+| Field | Matches | Notes |
+|-------|---------|-------|
+| `team_id` | Apple Developer Team ID | strongest pin for third-party software |
+| `signing_id` / `signing_id_prefix` | code-signing identifier | `codesign -dv` |
+| `platform_binary` | Apple-shipped binary | |
+| `exe_prefix` | executable path prefix | weakest: a binary can be placed anywhere |
+| `cwd` | process working directory (prefix) | live `lsof` lookup; pins an interpreter (bun, node, python) to **one** project instead of allowing every script it runs |
+| `cmd_regex` | regex on the live `ps` command line | short-lived processes may be gone first; then the rule does not match (fail closed) |
+
+Example: a session dashboard you run yourself with bun.
+
+```json
+{"name": "my-dashboard", "exe_prefix": "~/.bun/bin/bun", "team_id": "7FRXF46ZSN", "cwd": "~/src/my-dashboard"}
+```
+
 ## Quick start (no install)
 
 Requires a terminal app with **Full Disk Access** (System Settings → Privacy &

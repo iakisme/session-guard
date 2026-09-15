@@ -22,6 +22,7 @@ import collections
 import json
 import os
 import pwd
+import re
 import signal
 import subprocess
 import sys
@@ -63,9 +64,12 @@ class Config:
         self.allow = []
         for rule in raw.get("allow", []):
             r = dict(rule)
-            if "exe_prefix" in r:
-                v = r["exe_prefix"]
-                r["exe_prefix"] = [self.expand(x) for x in (v if isinstance(v, list) else [v])]
+            for key in ("exe_prefix", "cwd"):
+                if key in r:
+                    v = r[key]
+                    r[key] = [self.expand(x) for x in (v if isinstance(v, list) else [v])]
+            if "cmd_regex" in r:
+                r["cmd_regex"] = re.compile(r["cmd_regex"])
             self.allow.append(r)
         self.cooldown = int(raw.get("cooldown_seconds", 60))
         self.heartbeat = int(raw.get("heartbeat_seconds", 300))
@@ -126,30 +130,45 @@ def collect_paths(node, out):
 
 
 class ProcCache:
-    """Best-effort pid -> command line, cached briefly (short-lived `cat`
+    """Best-effort pid -> command line / cwd, cached briefly (short-lived `cat`
     processes are usually gone by the time we look, parents are not)."""
 
     def __init__(self, ttl=5.0):
         self.ttl = ttl
         self.cache = {}
 
-    def command(self, pid):
+    def _get(self, key, pid, fn):
         if not pid or pid <= 0:
             return None
-        hit = self.cache.get(pid)
+        hit = self.cache.get((key, pid))
         now = time.time()
         if hit and now - hit[0] < self.ttl:
             return hit[1]
         try:
-            out = subprocess.run(["/bin/ps", "-o", "command=", "-p", str(pid)],
-                                 capture_output=True, text=True, timeout=3).stdout.strip()
+            val = fn(pid)
         except Exception:
-            out = ""
-        val = out[:300] if out else None
-        self.cache[pid] = (now, val)
-        if len(self.cache) > 2000:
+            val = None
+        self.cache[(key, pid)] = (now, val)
+        if len(self.cache) > 4000:
             self.cache.clear()
         return val
+
+    def command(self, pid):
+        def run(p):
+            out = subprocess.run(["/bin/ps", "-o", "command=", "-p", str(p)],
+                                 capture_output=True, text=True, timeout=3).stdout.strip()
+            return out[:300] or None
+        return self._get("cmd", pid, run)
+
+    def cwd(self, pid):
+        def run(p):
+            out = subprocess.run(["/usr/sbin/lsof", "-a", "-p", str(p), "-d", "cwd", "-Fn"],
+                                 capture_output=True, text=True, timeout=5).stdout
+            for line in out.splitlines():
+                if line.startswith("n"):
+                    return line[1:]
+            return None
+        return self._get("cwd", pid, run)
 
 
 class Guard:
@@ -212,7 +231,11 @@ class Guard:
                 return True
         return False
 
-    def allowed(self, exe, sid, tid, platform):
+    def allowed(self, exe, sid, tid, platform, pid=None):
+        """First matching allow rule name, else None. Cheap fields (from the
+        event itself) are checked first; `cwd` and `cmd_regex` need a live
+        process lookup and are only consulted when the cheap fields passed.
+        A lookup that fails (process already gone) does NOT match: fail closed."""
         for r in self.cfg.allow:
             ok = True
             if "exe_prefix" in r:
@@ -225,6 +248,12 @@ class Guard:
                 ok = ok and tid == r["team_id"]
             if "platform_binary" in r:
                 ok = ok and platform == bool(r["platform_binary"])
+            if ok and "cwd" in r:
+                cwd = self.procs.cwd(pid)
+                ok = bool(cwd) and any(cwd == c.rstrip("/") or cwd.startswith(c.rstrip("/") + "/") for c in r["cwd"])
+            if ok and "cmd_regex" in r:
+                cmd = self.procs.command(pid)
+                ok = bool(cmd) and r["cmd_regex"].search(cmd) is not None
             if ok:
                 return r.get("name", "?")
         return None
@@ -305,7 +334,7 @@ class Guard:
             ff = event["open"].get("fflag", 0) or 0
             mode = "read+write" if (ff & FREAD and ff & FWRITE) else ("write" if ff & FWRITE else "read")
 
-        rule = self.allowed(exe, sid, tid, platform)
+        rule = self.allowed(exe, sid, tid, platform, pid)
         if self.learn is not None:
             key = (exe, sid or "-", tid or "-", rule or "ALERT")
             self.tally[key] += 1

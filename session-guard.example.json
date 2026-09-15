@@ -1,5 +1,15 @@
 {
-  "_doc": "session-guard config. Copy to session-guard.json (git-ignored) and adjust. `~` expands to the guarded user's home (notify.user, or SUDO_USER when run via sudo) — never to the daemon's own $HOME. Directory prefixes must end with '/'. An allow rule matches when ALL of its specified fields match; prefer team_id/signing_id over bare exe paths (a path can be impersonated, a Developer ID signature cannot). Run `./run.sh --learn 300` to see which processes touch these paths on your machine, then extend `allow`.",
+  "_doc": "session-guard config. Copy to session-guard.json (git-ignored) and adjust. `~` expands to the guarded user's home (notify.user, or SUDO_USER when run via sudo) — never to the daemon's own $HOME. Directory prefixes must end with '/'. Run `./run.sh --learn 300` to see which processes touch these paths on your machine, then extend `allow`.",
+  "_allow_rule_fields": {
+    "exe_prefix":        "executable path prefix (string or list); weakest pin, a binary can be placed anywhere",
+    "signing_id":        "exact code-signing identifier (codesign -dv)",
+    "signing_id_prefix": "prefix match on the signing identifier",
+    "team_id":           "Apple Developer Team ID; strongest pin for third-party software",
+    "platform_binary":   "true = Apple-shipped binary",
+    "cwd":               "process working directory (string or list, prefix match); live lookup via lsof, use it to pin an interpreter (bun/node/python) to ONE project instead of allowing every script it runs",
+    "cmd_regex":         "regex on the live `ps` command line; short-lived processes may be gone before lookup, which then does NOT match (fail closed)",
+    "_semantics":        "a rule matches when ALL of its fields match; the first matching rule wins"
+  },
 
   "watch": [
     "~/.claude/projects/",
@@ -42,7 +52,10 @@
   "_allow_examples": [
     "Your EDR / antivirus / backup agent will open these files constantly. Find its identity with",
     "`codesign -dv /path/to/agent 2>&1 | grep -E '^(Identifier|TeamIdentifier)='` and add a team_id rule, e.g.",
-    {"name": "sentinelone", "team_id": "4AYE5J54KN"}
+    {"name": "sentinelone", "team_id": "4AYE5J54KN"},
+    "A tool of your own that legitimately reads session data (a dashboard, a chat bridge, a usage report):",
+    "pin the interpreter AND the project directory, so other scripts run by the same interpreter still alert, e.g.",
+    {"name": "my-session-dashboard", "exe_prefix": "~/.bun/bin/bun", "team_id": "7FRXF46ZSN", "cwd": "~/src/my-session-dashboard"}
   ],
 
   "cooldown_seconds": 60,
