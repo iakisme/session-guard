@@ -124,6 +124,20 @@ Files: code `/usr/local/lib/session-guard/` (root-owned), config
 heartbeat line every 5 minutes in `guard.log` proves the feed is alive; a
 start-up notification proves the notification channel works.
 
+### Updating
+
+The daemon runs the *installed* copies, not the checkout. After a `git pull`
+or after editing your local `session-guard.json`:
+
+```sh
+sudo ./install.sh                    # refresh code + plist, restart; installed config is kept
+sudo ./install.sh --replace-config   # also deploy the local session-guard.json (old one -> .bak)
+```
+
+`install.sh` tells you when the installed config lacks rules that your local
+one has. The FDA grant survives updates as long as the launcher binary is
+unchanged; if it changed, the script says so and re-opens System Settings.
+
 ## Alert channels
 
 1. macOS notification (from the daemon via `launchctl asuser <uid> sudo -u <user> osascript`).
